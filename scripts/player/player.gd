@@ -7,6 +7,10 @@ var current_id_path: Array[Vector2i]
 var target_position: Vector2
 var is_moving: bool
 
+var movement_enabled: bool = false
+var highlight_cells: Array[Vector2i] = []
+var max_move_distance: int = 5
+
 func _ready() -> void:
 	astar_grid = AStarGrid2D.new()
 	astar_grid.region = tile_map.get_used_rect()
@@ -27,25 +31,28 @@ func _ready() -> void:
 				astar_grid.set_point_solid(tile_position)
 			
 func _input(event):
-	if event.is_action_pressed("left_click") == false:
-		return
+	if event.is_action_pressed("left_click"):
+		var mouse_pos = get_global_mouse_position()
+		var map_pos = tile_map.local_to_map(mouse_pos)
 		
-	var id_path
+		if is_moving:
+			return
+			
+		if is_position_inside_player(mouse_pos):
+			movement_enabled = true
+			highlight_available_cells()
+			return
+			
+		if movement_enabled and is_valid_move_position(map_pos):
+			var player_map_pos = tile_map.local_to_map(global_position)
+			current_id_path = astar_grid.get_id_path(player_map_pos, map_pos).slice(1)
+			
+			movement_enabled = false
+			clear_highlights()
+		else:
+			movement_enabled = false
+			clear_highlights()
 	
-	if is_moving:
-		id_path = astar_grid.get_id_path(
-			tile_map.local_to_map(target_position),
-			tile_map.local_to_map(get_global_mouse_position())
-		)
-	else:
-		id_path = astar_grid.get_id_path(
-			tile_map.local_to_map(global_position),
-			tile_map.local_to_map(get_global_mouse_position())
-		).slice(1)
-		
-	if id_path.is_empty() == false:
-		current_id_path = id_path
-		
 func _physics_process(delta: float):
 	if current_id_path.is_empty():
 		return  
@@ -63,3 +70,32 @@ func _physics_process(delta: float):
 			target_position = tile_map.map_to_local(current_id_path.front())
 		else:
 			is_moving = false
+
+func is_position_inside_player(pos: Vector2) -> bool:
+	return global_position.distance_to(pos) < 4
+	
+func is_valid_move_position(map_pos: Vector2i) -> bool:
+	return map_pos in highlight_cells
+
+func highlight_available_cells():
+	clear_highlights()
+	
+	var player_map_pos = tile_map.local_to_map(global_position)
+	
+	for x in range(player_map_pos.x - max_move_distance, player_map_pos.x + max_move_distance + 1):
+		for y in range(player_map_pos.y - max_move_distance, player_map_pos.y + max_move_distance + 1):
+			var check_pos = Vector2i(x, y)
+			
+			if check_pos == player_map_pos:
+				continue
+				
+			var path = astar_grid.get_id_path(player_map_pos, check_pos)
+			
+			if not path.is_empty() and path.size() - 1 <= max_move_distance:
+				highlight_cells.append(check_pos)
+				
+				tile_map.set_cell(1, check_pos, 0, Vector2i(0, 0))
+				
+func clear_highlights():
+	tile_map.clear_layer(1)
+	highlight_cells.clear()
